@@ -155,13 +155,17 @@ def get_agents():
             for fid in os.listdir(agents_dir):
                 conf = load_agent_config(fid)
                 if conf:
-                    res_list.append({"id": fid, "name": conf.get("name", fid)})
+                    res_list.append({
+                        "id": fid,
+                        "name": conf.get("name", fid),
+                        "avatar": conf.get("avatar") or conf.get("avatarUrl") or conf.get("avatar_url", "")
+                    })
         except Exception as e:
             print(f"读取Agent失败: {e}")
 
     # 如果没找到Agent，返回一个默认的防止前端报错
     if not res_list:
-        res_list.append({"id": "default", "name": "Default Agent"})
+        res_list.append({"id": "default", "name": "Default Agent", "avatar": ""})
 
     return jsonify(res_list)
 
