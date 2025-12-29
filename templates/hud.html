@@ -84,9 +84,9 @@
         #chat-list::-webkit-scrollbar { width: 4px; }
         #chat-list::-webkit-scrollbar-thumb { background: rgba(212,175,55,0.3); }
 
-        .msg-row { display: flex; flex-direction: column; max-width: 95%; }
+        .msg-row { display: flex; gap: 8px; max-width: 95%; align-items: flex-start; }
         .msg-row.ai { align-self: flex-start; }
-        .msg-row.user { align-self: flex-end; align-items: flex-end; }
+        .msg-row.user { align-self: flex-end; align-items: flex-end; flex-direction: row-reverse; }
 
         .msg-meta { font-size: 9px; color: #666; margin-bottom: 2px; }
         .msg-bubble {
@@ -96,6 +96,53 @@
 
         .msg-row.ai .msg-bubble { background: rgba(255, 255, 255, 0.05); border-left: 2px solid var(--gold); }
         .msg-row.user .msg-bubble { background: rgba(0, 50, 80, 0.5); border: 1px solid rgba(212,175,55,0.5); }
+
+        .msg-avatar {
+            width: 28px; height: 28px; border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1) center/cover no-repeat;
+            border: 1px solid rgba(212,175,55,0.4);
+            flex-shrink: 0;
+        }
+
+        .msg-content { display: flex; flex-direction: column; }
+
+        /* --- 助手选择 --- */
+        .agent-select { position: relative; }
+        .agent-btn {
+            display: flex; align-items: center; gap: 6px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--gold);
+            color: var(--gold);
+            font-size: 10px;
+            padding: 2px 6px;
+            cursor: pointer;
+            -webkit-app-region: no-drag;
+        }
+        .agent-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .agent-avatar {
+            width: 18px; height: 18px; border-radius: 50%;
+            background: rgba(255,255,255,0.1) center/cover no-repeat;
+            border: 1px solid rgba(212,175,55,0.4);
+            flex-shrink: 0;
+        }
+        .agent-menu {
+            position: absolute; top: 26px; left: 0; min-width: 180px;
+            background: rgba(18, 18, 20, 0.98);
+            border: 1px solid rgba(212,175,55,0.4);
+            border-radius: 4px;
+            padding: 6px;
+            display: none;
+            z-index: 10;
+        }
+        .agent-menu.open { display: block; }
+        .agent-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .agent-item:hover { background: rgba(212,175,55,0.08); }
+        .agent-item .agent-name { color: #eee; }
 
         /* --- 底部 --- */
         .footer {
@@ -121,6 +168,13 @@
                 <span class="title" id="agentTitle">VCP LINK</span>
             </div>
             <div class="controls">
+                <div class="agent-select no-drag">
+                    <button class="agent-btn" onclick="toggleAgentMenu()">
+                        <span class="agent-avatar" id="agentAvatar"></span>
+                        <span class="agent-name" id="agentName">选择助手</span>
+                    </button>
+                    <div class="agent-menu" id="agentMenu"></div>
+                </div>
                 <button class="btn" id="btnAuto" onclick="toggleAuto()">AUTO</button>
                 <button class="btn btn-close" onclick="closeApp()">♰</button>
             </div>
@@ -145,23 +199,61 @@
 
     <script>
         let selectedAgentId = "";
+        let selectedAgentName = "助手";
+        let selectedAgentAvatar = "";
         let isAutoMode = false;
         let autoTimer = null;
+        let agentList = [];
 
         async function init() {
             try {
                 // 连接检测
                 const res = await fetch('/api/get_agents');
                 const list = await res.json();
-                if(list.length > 0) {
-                    selectedAgentId = list[0].id;
-                    document.getElementById('agentTitle').innerText = list[0].name.toUpperCase();
+                agentList = list || [];
+                if(agentList.length > 0) {
+                    setAgent(agentList[0]);
                 }
+                renderAgentMenu();
             } catch(e) {
                 // 如果这里报错，说明后端没起得来
                 addMessage("后端连接失败，请检查控制台报错", false);
                 document.getElementById('statusDot').style.background = 'red';
             }
+        }
+
+        function setAgent(agent) {
+            selectedAgentId = agent.id;
+            selectedAgentName = agent.name || "助手";
+            selectedAgentAvatar = agent.avatar || "";
+            document.getElementById('agentTitle').innerText = selectedAgentName.toUpperCase();
+            document.getElementById('agentName').innerText = selectedAgentName;
+            const avatarEl = document.getElementById('agentAvatar');
+            avatarEl.style.backgroundImage = selectedAgentAvatar ? `url('${selectedAgentAvatar}')` : '';
+        }
+
+        function renderAgentMenu() {
+            const menu = document.getElementById('agentMenu');
+            menu.innerHTML = '';
+            agentList.forEach(agent => {
+                const item = document.createElement('div');
+                item.className = 'agent-item';
+                item.innerHTML = `
+                    <span class="agent-avatar" style="background-image:url('${agent.avatar || ''}')"></span>
+                    <span class="agent-name">${agent.name || agent.id}</span>
+                `;
+                item.onclick = () => {
+                    setAgent(agent);
+                    toggleAgentMenu(false);
+                };
+                menu.appendChild(item);
+            });
+        }
+
+        function toggleAgentMenu(forceState = null) {
+            const menu = document.getElementById('agentMenu');
+            const shouldOpen = forceState !== null ? forceState : !menu.classList.contains('open');
+            menu.classList.toggle('open', shouldOpen);
         }
 
         async function sendMsg(overrideText = null, mode = "manual") {
@@ -170,7 +262,7 @@
             if (mode === "manual" && !text) return;
 
             if (mode === "manual") {
-                addMessage(text, true);
+                addMessage(text, true, "我");
                 input.value = '';
             }
             document.getElementById('statusDot').style.background = 'yellow'; // 忙碌状态
@@ -188,12 +280,12 @@
                 const data = await res.json();
 
                 if (data.status === "ok" && data.reply) {
-                    addMessage(data.reply.replace(/\[EMOTION:.*?\]/g, ''), false);
+                    addMessage(data.reply.replace(/\[EMOTION:.*?\]/g, ''), false, selectedAgentName, selectedAgentAvatar);
                 } else if (data.status === "error" && mode === "manual") {
-                    addMessage("Error: " + data.reply, false);
+                    addMessage("Error: " + data.reply, false, selectedAgentName, selectedAgentAvatar);
                 }
             } catch (e) {
-                if(mode === "manual") addMessage("请求发送失败", false);
+                if(mode === "manual") addMessage("请求发送失败", false, selectedAgentName, selectedAgentAvatar);
                 console.error(e);
             }
             document.getElementById('statusDot').style.background = '#0f0'; // 恢复就绪
@@ -217,13 +309,17 @@
             }
         }
 
-        function addMessage(text, isUser) {
+        function addMessage(text, isUser, senderName = null, avatar = null) {
             const list = document.getElementById('chat-list');
             const row = document.createElement('div');
             row.className = `msg-row ${isUser ? 'user' : 'ai'}`;
+            const name = senderName || (isUser ? '我' : selectedAgentName);
             row.innerHTML = `
-                ${!isUser ? `<span class="msg-meta">${isUser?'YOU':'AI'}</span>` : ''}
-                <div class="msg-bubble">${text}</div>
+                ${!isUser ? `<div class="msg-avatar" style="background-image:url('${avatar || ''}')"></div>` : ''}
+                <div class="msg-content">
+                    <span class="msg-meta">${name}</span>
+                    <div class="msg-bubble">${text}</div>
+                </div>
             `;
             list.appendChild(row);
             list.scrollTop = list.scrollHeight;
