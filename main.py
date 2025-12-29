@@ -175,6 +175,7 @@ def chat():
 
     messages = []
     system_text = config.get("systemPrompt", "你是一个陪玩助手。")
+    system_text += "\n请用可直接作为 HTML 片段渲染的格式回答（例如使用 <p>、<ul>、<li>、<strong> 等标签），不要使用 Markdown。"
     if mode == "auto":
         system_text += "\n【模式：自动观察】画面有变化。若无关紧要请回 [SILENCE]。"
 
