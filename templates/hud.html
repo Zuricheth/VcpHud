@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VCP HUD</title>
+    <style>
+        /* --- 基础设置 --- */
+        html, body {
+            margin: 0; padding: 0;
+            width: 100vw; height: 100vh;
+            background-color: transparent;
+            overflow: hidden;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            user-select: none;
+        }
+
+        /* --- 拖动逻辑核心 --- */
+        /* 默认所有区域继承 easy_drag=True (可拖动) */
+
+        /* 禁止拖动的区域 (内容交互区) */
+        .no-drag {
+            -webkit-app-region: no-drag;
+            cursor: default;
+            user-select: text; /* 允许选择文字 */
+        }
+
+        /* 允许拖动的区域 (标题栏) */
+        .drag-handle {
+            -webkit-app-region: drag;
+            cursor: move;
+        }
+
+        /* --- 主题风格 --- */
+        :root {
+            --gold: #d4af37;
+            --bg-color: rgba(18, 18, 20, 0.95);
+        }
+
+        .hud-frame {
+            width: 100%; height: 100%;
+            box-sizing: border-box;
+            background: var(--bg-color);
+            border: 2px solid var(--gold);
+            display: flex; flex-direction: column;
+            position: relative;
+        }
+
+        /* 自动模式红边框 */
+        .hud-frame.auto-active {
+            border-color: #ff4444;
+            box-shadow: inset 0 0 20px rgba(255, 68, 68, 0.2);
+        }
+
+        /* --- 头部 --- */
+        .header {
+            height: 40px;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 12px;
+            background: linear-gradient(90deg, rgba(212,175,55,0.1), transparent);
+            border-bottom: 1px solid rgba(212,175,55,0.3);
+        }
+
+        .title { font-size: 11px; font-weight: bold; color: var(--gold); letter-spacing: 2px; }
+
+        .controls { display: flex; gap: 8px; }
+        .btn {
+            background: transparent; border: 1px solid var(--gold);
+            color: var(--gold); font-size: 10px; padding: 2px 6px;
+            cursor: pointer;
+            -webkit-app-region: no-drag; /* 按钮必须不可拖动才能点击 */
+        }
+        .btn.active { background: #ff4444; border-color: #ff4444; color: #fff; }
+        .btn-close { border: none; font-size: 16px; line-height: 1; }
+        .btn-close:hover { color: #ff4444; transform: scale(1.2); }
+
+        /* --- 聊天区 --- */
+        #chat-list {
+            flex: 1; overflow-y: auto; padding: 15px;
+            display: flex; flex-direction: column; gap: 12px;
+            /* 关键：内容区禁止拖动，否则无法选中文本 */
+        }
+
+        #chat-list::-webkit-scrollbar { width: 4px; }
+        #chat-list::-webkit-scrollbar-thumb { background: rgba(212,175,55,0.3); }
+
+        .msg-row { display: flex; flex-direction: column; max-width: 95%; }
+        .msg-row.ai { align-self: flex-start; }
+        .msg-row.user { align-self: flex-end; align-items: flex-end; }
+
+        .msg-meta { font-size: 9px; color: #666; margin-bottom: 2px; }
+        .msg-bubble {
+            padding: 8px 12px; font-size: 13px; line-height: 1.5; color: #eee;
+            position: relative;
+        }
+
+        .msg-row.ai .msg-bubble { background: rgba(255, 255, 255, 0.05); border-left: 2px solid var(--gold); }
+        .msg-row.user .msg-bubble { background: rgba(0, 50, 80, 0.5); border: 1px solid rgba(212,175,55,0.5); }
+
+        /* --- 底部 --- */
+        .footer {
+            padding: 10px;
+            background: rgba(0,0,0,0.3);
+            border-top: 1px solid rgba(212,175,55,0.2);
+        }
+        .input-group {
+            display: flex; border: 1px solid var(--gold); padding: 5px;
+            background: rgba(255,255,255,0.02);
+            /* 输入框区域也禁止拖动，确保能输入 */
+        }
+        input { flex: 1; background: none; border: none; color: #fff; font-size: 13px; outline: none; }
+        .send-btn { background: none; border: none; color: var(--gold); cursor: pointer; font-size: 16px; -webkit-app-region: no-drag; }
+    </style>
+</head>
+<body>
+    <div class="hud-frame" id="mainFrame">
+        <!-- 头部：本身是可拖动的，但按钮不可拖动 -->
+        <div class="header drag-handle">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <div id="statusDot" style="width:6px; height:6px; background:#0f0; border-radius:50%;"></div>
+                <span class="title" id="agentTitle">VCP LINK</span>
+            </div>
+            <div class="controls">
+                <button class="btn" id="btnAuto" onclick="toggleAuto()">AUTO</button>
+                <button class="btn btn-close" onclick="closeApp()">♰</button>
+            </div>
+        </div>
+
+        <!-- 聊天区：禁止拖动 (no-drag) -->
+        <div id="chat-list" class="no-drag">
+            <div class="msg-row ai">
+                <span class="msg-meta">SYSTEM</span>
+                <div class="msg-bubble">系统重连成功。拖动顶部标题栏可移动窗口。</div>
+            </div>
+        </div>
+
+        <!-- 底部：禁止拖动 (no-drag) -->
+        <div class="footer no-drag">
+            <div class="input-group">
+                <input type="text" id="userInput" placeholder="..." onkeypress="if(event.key==='Enter') sendMsg()">
+                <button class="send-btn" onclick="sendMsg()">➤</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedAgentId = "";
+        let isAutoMode = false;
+        let autoTimer = null;
+
+        async function init() {
+            try {
+                // 连接检测
+                const res = await fetch('/api/get_agents');
+                const list = await res.json();
+                if(list.length > 0) {
+                    selectedAgentId = list[0].id;
+                    document.getElementById('agentTitle').innerText = list[0].name.toUpperCase();
+                }
+            } catch(e) {
+                // 如果这里报错，说明后端没起得来
+                addMessage("后端连接失败，请检查控制台报错", false);
+                document.getElementById('statusDot').style.background = 'red';
+            }
+        }
+
+        async function sendMsg(overrideText = null, mode = "manual") {
+            const input = document.getElementById('userInput');
+            const text = overrideText || input.value.trim();
+            if (mode === "manual" && !text) return;
+
+            if (mode === "manual") {
+                addMessage(text, true);
+                input.value = '';
+            }
+            document.getElementById('statusDot').style.background = 'yellow'; // 忙碌状态
+
+            try {
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        agent_id: selectedAgentId,
+                        message: text,
+                        mode: mode
+                    })
+                });
+                const data = await res.json();
+
+                if (data.status === "ok" && data.reply) {
+                    addMessage(data.reply.replace(/\[EMOTION:.*?\]/g, ''), false);
+                } else if (data.status === "error" && mode === "manual") {
+                    addMessage("Error: " + data.reply, false);
+                }
+            } catch (e) {
+                if(mode === "manual") addMessage("请求发送失败", false);
+                console.error(e);
+            }
+            document.getElementById('statusDot').style.background = '#0f0'; // 恢复就绪
+        }
+
+        function toggleAuto() {
+            isAutoMode = !isAutoMode;
+            const btn = document.getElementById('btnAuto');
+            const frame = document.getElementById('mainFrame');
+            if (isAutoMode) {
+                btn.classList.add('active');
+                frame.classList.add('auto-active');
+                addMessage("自动观察开启", false);
+                sendMsg("", "auto");
+                autoTimer = setInterval(() => sendMsg("", "auto"), 8000);
+            } else {
+                btn.classList.remove('active');
+                frame.classList.remove('auto-active');
+                clearInterval(autoTimer);
+                addMessage("自动观察关闭", false);
+            }
+        }
+
+        function addMessage(text, isUser) {
+            const list = document.getElementById('chat-list');
+            const row = document.createElement('div');
+            row.className = `msg-row ${isUser ? 'user' : 'ai'}`;
+            row.innerHTML = `
+                ${!isUser ? `<span class="msg-meta">${isUser?'YOU':'AI'}</span>` : ''}
+                <div class="msg-bubble">${text}</div>
+            `;
+            list.appendChild(row);
+            list.scrollTop = list.scrollHeight;
+        }
+
+        function closeApp() {
+            fetch('/api/close');
+            setTimeout(() => window.close(), 100);
+        }
+
+        init();
+    </script>
+</body>
+</html>
