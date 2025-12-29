@@ -3,6 +3,7 @@ import base64
 import json
 import threading
 import time
+from collections import deque
 import requests
 import pyautogui
 from io import BytesIO
@@ -22,6 +23,10 @@ API_KEY = "Vcp_Secret_9x8d7f6a5s4d"
 
 last_screen_img = None
 DIFF_THRESHOLD = 3.0
+CHANGE_WINDOW_SEC = 1.2
+MIN_CHANGE_INTERVAL_SEC = 0.8
+recent_diffs = deque()
+last_change_time = 0.0
 
 
 def load_agent_config(agent_id):
@@ -58,7 +63,7 @@ def capture_vision_image():
 
 
 def check_screen_change(current_img):
-    global last_screen_img
+    global last_screen_img, last_change_time
     if last_screen_img is None:
         last_screen_img = current_img
         return True
@@ -68,7 +73,17 @@ def check_screen_change(current_img):
         diff = ImageChops.difference(img1, img2)
         stat = ImageStat.Stat(diff)
         diff_value = sum(stat.mean) / len(stat.mean)
-        return diff_value > DIFF_THRESHOLD
+        now = time.time()
+        recent_diffs.append((now, diff_value))
+        while recent_diffs and now - recent_diffs[0][0] > CHANGE_WINDOW_SEC:
+            recent_diffs.popleft()
+        window_avg = sum(v for _, v in recent_diffs) / max(len(recent_diffs), 1)
+
+        if window_avg > DIFF_THRESHOLD and now - last_change_time >= MIN_CHANGE_INTERVAL_SEC:
+            last_screen_img = current_img
+            last_change_time = now
+            return True
+        return False
     except:
         return True
 
