@@ -6,6 +6,7 @@ import time
 from collections import deque
 import requests
 import pyautogui
+import pygetwindow as gw
 from io import BytesIO
 from flask import Flask, jsonify, request, render_template
 import webview
@@ -20,6 +21,7 @@ app = Flask(__name__)
 VCP_APPDATA = r"E:\DockerData\VCPChat\AppData"
 VCP_URL = "http://localhost:6005/v1/chat/completions"
 API_KEY = "Vcp_Secret_9x8d7f6a5s4d"
+TARGET_PROCESS_TITLE = ""
 
 last_screen_img = None
 DIFF_THRESHOLD = 3.0
@@ -45,10 +47,27 @@ def load_agent_config(agent_id):
 
 
 # --- 截图 & 自身遮罩逻辑 ---
+def get_target_region():
+    if TARGET_PROCESS_TITLE:
+        windows = gw.getWindowsWithTitle(TARGET_PROCESS_TITLE)
+        if windows:
+            win = windows[0]
+            if win.width > 0 and win.height > 0:
+                return (win.left, win.top, win.width, win.height)
+        return None
+    active = gw.getActiveWindow()
+    if active and active.width > 0 and active.height > 0:
+        return (active.left, active.top, active.width, active.height)
+    return None
+
+
 def capture_vision_image():
     try:
-        # 1. 全屏截图
-        img = pyautogui.screenshot()
+        # 1. 仅截图目标进程窗口
+        region = get_target_region()
+        if not region:
+            return None
+        img = pyautogui.screenshot(region=region)
 
         # 2. 自身遮罩 (防止无限套娃)
         try:
@@ -56,10 +75,15 @@ def capture_vision_image():
                 window = webview.windows[0]
                 x, y = int(window.x), int(window.y)
                 w, h = int(window.width), int(window.height)
+                rx, ry, rw, rh = region
 
-                # 绘制纯黑矩形覆盖 HUD 所在位置
-                draw = ImageDraw.Draw(img)
-                draw.rectangle([x, y, x + w, y + h], fill="black")
+                # 若 HUD 覆盖目标区域，则绘制遮罩
+                if x < rx + rw and x + w > rx and y < ry + rh and y + h > ry:
+                    draw = ImageDraw.Draw(img)
+                    draw.rectangle(
+                        [x - rx, y - ry, x - rx + w, y - ry + h],
+                        fill="black"
+                    )
         except Exception as e:
             print(f"遮罩绘制忽略: {e}")
 
