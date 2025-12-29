@@ -28,7 +28,7 @@ DIFF_THRESHOLD = 3.0
 STRONG_DIFF_THRESHOLD = 6.0
 CHANGE_WINDOW_SEC = 1.2
 MIN_CHANGE_INTERVAL_SEC = 2.0
-MIN_AUTO_REQUEST_INTERVAL_SEC = 6.0
+MIN_AUTO_REQUEST_INTERVAL_SEC = 15.0
 BASELINE_REFRESH_SEC = 8.0
 MIN_SAMPLE_COUNT = 3
 recent_diffs = deque()
@@ -36,6 +36,7 @@ last_change_time = 0.0
 last_baseline_refresh = 0.0
 last_change_reason = ""
 last_request_time = 0.0
+EXCLUDED_WINDOW_TITLES = {"Program Manager", "Desktop", "桌面"}
 
 
 def load_agent_config(agent_id):
@@ -57,7 +58,16 @@ def get_target_region():
         return None
     active = gw.getActiveWindow()
     if active and active.width > 0 and active.height > 0:
-        return (active.left, active.top, active.width, active.height)
+        title = (active.title or "").strip()
+        if title and title not in EXCLUDED_WINDOW_TITLES:
+            return (active.left, active.top, active.width, active.height)
+    for win in gw.getAllWindows():
+        title = (win.title or "").strip()
+        if not title or title in EXCLUDED_WINDOW_TITLES:
+            continue
+        if win.isMinimized or win.width <= 0 or win.height <= 0:
+            continue
+        return (win.left, win.top, win.width, win.height)
     return None
 
 
@@ -185,7 +195,10 @@ def chat():
 
     # 1. 截图
     current_img = capture_vision_image()
-    if not current_img: return jsonify({"reply": "截图失败", "status": "error"})
+    if not current_img:
+        if mode == "auto":
+            return jsonify({"reply": None, "status": "unchanged"})
+        return jsonify({"reply": "截图失败", "status": "error"})
 
     # 2. 查重
     if mode == "auto":

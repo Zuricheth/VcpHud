@@ -119,6 +119,7 @@
             -webkit-app-region: no-drag;
         }
         .agent-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .agent-id { font-size: 9px; color: #888; }
         .agent-avatar {
             width: 18px; height: 18px; border-radius: 50%;
             background: rgba(255,255,255,0.1) center/cover no-repeat;
@@ -240,7 +241,10 @@
                 item.className = 'agent-item';
                 item.innerHTML = `
                     <span class="agent-avatar" style="background-image:url('${agent.avatar || ''}')"></span>
-                    <span class="agent-name">${agent.name || agent.id}</span>
+                    <div>
+                        <div class="agent-name">${agent.name || agent.id}</div>
+                        <div class="agent-id">${agent.id}</div>
+                    </div>
                 `;
                 item.onclick = () => {
                     setAgent(agent);
@@ -300,7 +304,7 @@
                 frame.classList.add('auto-active');
                 addMessage("自动观察开启", false);
                 sendMsg("", "auto");
-                autoTimer = setInterval(() => sendMsg("", "auto"), 8000);
+                autoTimer = setInterval(() => sendMsg("", "auto"), 15000);
             } else {
                 btn.classList.remove('active');
                 frame.classList.remove('auto-active');
