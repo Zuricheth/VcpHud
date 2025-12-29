@@ -26,12 +26,14 @@ DIFF_THRESHOLD = 3.0
 STRONG_DIFF_THRESHOLD = 6.0
 CHANGE_WINDOW_SEC = 1.2
 MIN_CHANGE_INTERVAL_SEC = 2.0
+MIN_AUTO_REQUEST_INTERVAL_SEC = 6.0
 BASELINE_REFRESH_SEC = 8.0
 MIN_SAMPLE_COUNT = 3
 recent_diffs = deque()
 last_change_time = 0.0
 last_baseline_refresh = 0.0
 last_change_reason = ""
+last_request_time = 0.0
 
 
 def load_agent_config(agent_id):
@@ -142,6 +144,7 @@ def get_agents():
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
+    global last_request_time
     data = request.json
     agent_id = data.get("agent_id")
     user_message = data.get("message", "")
@@ -158,6 +161,9 @@ def chat():
 
     # 2. 查重
     if mode == "auto":
+        now = time.time()
+        if now - last_request_time < MIN_AUTO_REQUEST_INTERVAL_SEC:
+            return jsonify({"reply": None, "status": "unchanged"})
         if not check_screen_change(current_img):
             return jsonify({"reply": None, "status": "unchanged"})
 
@@ -199,6 +205,7 @@ def chat():
             if mode == "auto" and "[SILENCE]" in reply:
                 return jsonify({"reply": None, "status": "silent"})
             if mode == "auto":
+                last_request_time = time.time()
                 return jsonify({"reply": reply, "status": "ok", "reason": last_change_reason})
             return jsonify({"reply": reply, "status": "ok"})
         else:
