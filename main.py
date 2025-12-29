@@ -23,10 +23,15 @@ API_KEY = "Vcp_Secret_9x8d7f6a5s4d"
 
 last_screen_img = None
 DIFF_THRESHOLD = 3.0
+STRONG_DIFF_THRESHOLD = 6.0
 CHANGE_WINDOW_SEC = 1.2
-MIN_CHANGE_INTERVAL_SEC = 0.8
+MIN_CHANGE_INTERVAL_SEC = 2.0
+BASELINE_REFRESH_SEC = 8.0
+MIN_SAMPLE_COUNT = 3
 recent_diffs = deque()
 last_change_time = 0.0
+last_baseline_refresh = 0.0
+last_change_reason = ""
 
 
 def load_agent_config(agent_id):
@@ -63,9 +68,10 @@ def capture_vision_image():
 
 
 def check_screen_change(current_img):
-    global last_screen_img, last_change_time
+    global last_screen_img, last_change_time, last_baseline_refresh, last_change_reason
     if last_screen_img is None:
         last_screen_img = current_img
+        last_baseline_refresh = time.time()
         return True
     try:
         img1 = last_screen_img.resize((32, 32)).convert("L")
@@ -77,14 +83,32 @@ def check_screen_change(current_img):
         recent_diffs.append((now, diff_value))
         while recent_diffs and now - recent_diffs[0][0] > CHANGE_WINDOW_SEC:
             recent_diffs.popleft()
-        window_avg = sum(v for _, v in recent_diffs) / max(len(recent_diffs), 1)
+        window_count = len(recent_diffs)
+        window_avg = sum(v for _, v in recent_diffs) / max(window_count, 1)
+        window_max = max((v for _, v in recent_diffs), default=0.0)
 
-        if window_avg > DIFF_THRESHOLD and now - last_change_time >= MIN_CHANGE_INTERVAL_SEC:
+        if window_count >= MIN_SAMPLE_COUNT and now - last_change_time >= MIN_CHANGE_INTERVAL_SEC:
+            if window_max >= STRONG_DIFF_THRESHOLD:
+                last_screen_img = current_img
+                last_change_time = now
+                last_change_reason = f"strong_change(max={window_max:.2f})"
+                recent_diffs.clear()
+                return True
+            if window_avg > DIFF_THRESHOLD:
+                last_screen_img = current_img
+                last_change_time = now
+                last_change_reason = f"sustained_change(avg={window_avg:.2f})"
+                recent_diffs.clear()
+                return True
+
+        if diff_value <= DIFF_THRESHOLD and now - last_baseline_refresh >= BASELINE_REFRESH_SEC:
             last_screen_img = current_img
-            last_change_time = now
-            return True
+            last_baseline_refresh = now
+            last_change_reason = "baseline_refresh"
         return False
     except:
+        last_screen_img = current_img
+        last_change_reason = "exception_refresh"
         return True
 
 
@@ -174,6 +198,8 @@ def chat():
             reply = res["choices"][0]["message"]["content"].strip()
             if mode == "auto" and "[SILENCE]" in reply:
                 return jsonify({"reply": None, "status": "silent"})
+            if mode == "auto":
+                return jsonify({"reply": reply, "status": "ok", "reason": last_change_reason})
             return jsonify({"reply": reply, "status": "ok"})
         else:
             return jsonify({"reply": "后端返回格式异常", "status": "error"})
